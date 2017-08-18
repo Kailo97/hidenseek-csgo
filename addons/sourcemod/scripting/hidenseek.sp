@@ -26,7 +26,7 @@
 #pragma newdecls required
 #pragma semicolon 1
 
-#define PLUGIN_VERSION                "2.0.0-beta4"
+#define PLUGIN_VERSION                "2.0.1-dev1"
 #define AUTHOR                        "ceLoFaN"
 
 #include "hidenseek/penalties.sp"
@@ -285,6 +285,7 @@ int g_iaAlivePlayers[2] = {0, ...};
 int g_iTerroristsDeathCount;
 bool g_baWelcomeMsgShown[MAXPLAYERS + 1] = {false, ...};
 bool g_bTeamSwap;
+Handle g_hGameConf;
 
 //Grenade consts
 char g_saGrenadeWeaponNames[][] = {
@@ -302,6 +303,13 @@ char g_saGrenadeChatNames[][] = {
     "HE Grenade",
     "Decoy Grenade",
     "Incendiary Grenade"
+};
+char g_saGrenadeAmmoTypes[][] = {
+    "AMMO_TYPE_HEGRENADE",
+    "AMMO_TYPE_FLASHBANG",
+    "AMMO_TYPE_SMOKEGRENADE",
+    "AMMO_TYPE_MOLOTOV",
+    "AMMO_TYPE_DECOY"
 };
 int g_iaGrenadeOffsets[sizeof(g_saGrenadeWeaponNames)];
 
@@ -355,6 +363,9 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 
 public void OnPluginStart()
 {
+    //Load Config
+    g_hGameConf = LoadGameConfigFile("hidenseek.games");
+
     //Load Translations
     LoadTranslations("hidenseek.phrases");
 
@@ -692,13 +703,12 @@ public void OnMapStart()
     PrecacheSound(SOUND_GOGOGO);
 
     if (!g_iaGrenadeOffsets[0]) {
-        int end = sizeof(g_saGrenadeWeaponNames);
-        for (int i=0; i<end; i++) {
-            int entindex = CreateEntityByName(g_saGrenadeWeaponNames[i]);
-            DispatchSpawn(entindex);
-            g_iaGrenadeOffsets[i] = GetEntProp(entindex, Prop_Send, "m_iPrimaryAmmoType");
-            AcceptEntityInput(entindex, "Kill");
-        }
+        g_iaGrenadeOffsets[0] = GetAmmoDef_Index(g_saGrenadeAmmoTypes[1]); // flashbang
+        g_iaGrenadeOffsets[1] = GetAmmoDef_Index(g_saGrenadeAmmoTypes[3]); // molotov
+        g_iaGrenadeOffsets[2] = GetAmmoDef_Index(g_saGrenadeAmmoTypes[2]); // smokegrenade
+        g_iaGrenadeOffsets[3] = GetAmmoDef_Index(g_saGrenadeAmmoTypes[0]); // hegrenade
+        g_iaGrenadeOffsets[4] = GetAmmoDef_Index(g_saGrenadeAmmoTypes[4]); // decoy
+        g_iaGrenadeOffsets[5] = GetAmmoDef_Index(g_saGrenadeAmmoTypes[3]); // incgrenade
     }
 
     g_fCountdownOverTime = 0.0;
@@ -2419,4 +2429,34 @@ public int Native_HNS_GetMode(Handle plugin, int numParams)
     return HNSMODE_NORMAL;*/
 
     return g_bRespawnMode;
+}
+
+int GetAmmoDef_Index(const char[] type)
+{
+    static Handle call = null;
+    if (call == null) {
+        StartPrepSDKCall(SDKCall_Raw);
+        PrepSDKCall_SetFromConf(g_hGameConf, SDKConf_Signature, "GetAmmoDef_Index");
+        PrepSDKCall_SetReturnInfo(SDKType_PlainOldData, SDKPass_Plain);
+        PrepSDKCall_AddParameter(SDKType_String, SDKPass_Pointer);
+        call = EndPrepSDKCall();
+        if (!call)
+            SetFailState("Can't load function call.");
+    }
+    return SDKCall(call, GetAmmoDef(), type);
+}
+
+any GetAmmoDef()
+{
+    static Handle call = null;
+    if (call == null) {
+        StartPrepSDKCall(SDKCall_Static);
+        PrepSDKCall_SetFromConf(g_hGameConf, SDKConf_Signature, "GetAmmoDef");
+        PrepSDKCall_SetReturnInfo(SDKType_PlainOldData, SDKPass_Plain);
+        // No args
+        call = EndPrepSDKCall();
+        if (!call)
+            SetFailState("Can't load function call.");
+    }
+    return SDKCall(call);
 }
